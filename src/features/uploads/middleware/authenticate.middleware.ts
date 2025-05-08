@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '../services/jwt.service';
 import { UnauthorizedError } from '../../../utils/errors/api-error';
+import  admin from '../../../config/firebase';
 
 export interface AuthenticatedRequest extends Request {
   user: {
@@ -27,11 +28,40 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
 
     // Validate and set role to either 'user' or 'admin'
     const validRole = decoded.role === 'admin' ? 'admin' : 'user';
+    const email = decoded.email;
 
-    // Convert request to AuthenticatedRequest by injecting the user property
+    if (!email) {
+      throw new UnauthorizedError('Unauthorized', ['Not registered user']);
+    }
+    
+    // Convertimos el req a AuthenticatedRequest al inyectar la propiedad user
     (req as AuthenticatedRequest).user = {
       role: validRole
     };
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const validateAuth = async (
+  req: Request, 
+  res: Response, 
+  next: NextFunction
+) => {
+  try {
+    // Validate Firebase token from body
+    const { auth_token } = req.body;
+    if (!auth_token) {
+      throw new UnauthorizedError('Unauthorized', ['No auth token provided']);
+    }
+
+    await admin.auth()
+      .verifyIdToken(auth_token)
+      .catch(() => {
+        throw new UnauthorizedError('Unauthorized', ['Invalid auth token']);
+      });
 
     next();
   } catch (error) {

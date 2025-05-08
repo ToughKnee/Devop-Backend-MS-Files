@@ -8,6 +8,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import uploadRoutes from "./features/uploads/routes/upload.routes";
+import { errorHandler } from "./utils/errors/error-handler.middleware";
 
 // Check if dotenv was loaded correctly
 if (result.error) {
@@ -46,7 +47,8 @@ app.get('/', (req, res) => {
 
 
 app.use("/api/files", uploadRoutes);
-app.use('/uploads', express.static('uploads'));
+app.use(errorHandler);
+
 app.listen(PORT, () => {
   console.log(`File service running on http://localhost:${PORT}`);
 });
