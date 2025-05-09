@@ -124,10 +124,13 @@ export const uploadController = {
 
   listFiles: async (req: Request, res: Response): Promise<void> => {
     try {
-
       // Get basic list
       const files = await uploadService.listFilesService();
 
+      // Ensure files is an array
+      if (!Array.isArray(files)) {
+        throw new Error('Invalid files data received');
+      }
 
       res.status(200).json({
         message: 'Files retrieved successfully',
@@ -138,7 +141,7 @@ export const uploadController = {
       console.error('Error listing files:', error);
       res.status(500).json({
         message: 'Error listing files',
-        error: error.message || 'Unknown error'
+        error: error.message || 'Listing failed'
       });
     }
   }
