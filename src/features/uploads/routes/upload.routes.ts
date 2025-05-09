@@ -14,6 +14,10 @@ router.post(
   uploadController.determineRequestType,
   uploadController.processUpload
 );
-
+router.get(
+  '/list-files',
+  authenticateJWT,
+  uploadController.listFiles
+);
 
 export default router;

@@ -63,34 +63,62 @@ export const uploadController = {
   // Handler to process mobile client uploads
   processUpload: async (req: Request, res: Response): Promise<void> => {
     try {
-      // If there's no file, it's because it was already handled by createRouteHandler for web clients
-      if (!req.file) {
-        return; // Do nothing, already handled by UploadThing
-      }
-      
-      const authReq = req as AuthenticatedRequest;
-      
-      // Create file object for the service
-      const fileObject = {
-        buffer: req.file.buffer,
-        mimeType: req.file.mimetype,
-        fileName: req.file.originalname
-      };
-      
-      // Use the service to upload the file
-      const result = await uploadService.uploadProfileImage(fileObject, authReq.user.role);
-
-      // Return response
-      res.status(200).json({
-        message: `Image uploaded successfully${result.method === 'presignedUrl' ? ' (using presigned URL)' : ''}`,
-        fileUrl: result.fileUrl
-      });
-    } catch (error: any) {
-      console.error('Error uploading file:', error);
-      res.status(500).json({
-        message: 'Error uploading image',
-        error: error.message || 'Unknown error'
-      });
+    if (!req.file) {
+      return; // Ya manejado por UploadThing
     }
+    
+    const authReq = req as AuthenticatedRequest;
+    
+    // Extraer información adicional
+    const userId = req.body.userId || null;
+    const oldImageUrl = req.body.oldImageUrl || null;
+    
+    // Crear objeto de archivo
+    const fileObject = {
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      fileName: req.file.originalname
+    };
+    
+    // Llamar al servicio con la información completa
+    const result = await uploadService.uploadProfileImage(
+      fileObject, 
+      authReq.user.role,
+      userId,
+      oldImageUrl
+    );
+ // Devolver respuesta
+    res.status(200).json({
+      message: `Image uploaded successfully${result.method === 'presignedUrl' ? ' (using presigned URL)' : ''}`,
+      fileUrl: result.fileUrl
+    });
+  } catch (error: any) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({
+      message: 'Error uploading image',
+      error: error.message || 'Unknown error'
+    });
   }
+},
+
+listFiles: async (req: Request, res: Response): Promise<void> => {
+  try {
+    
+    // Obtener lista básica
+    const files = await uploadService.listFilesService();
+    
+    
+    res.status(200).json({ 
+      message: 'Files retrieved successfully',
+      fileCount: files.length,
+      files
+    });
+  } catch (error: any) {
+    console.error('Error listing files:', error);
+    res.status(500).json({
+      message: 'Error listing files',
+      error: error.message || 'Unknown error'
+    });
+  }
+}
 };

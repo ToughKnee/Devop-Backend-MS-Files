@@ -14,10 +14,10 @@ export class UploadService {
    * @param metadata Additional metadata for the upload
    * @returns URL of the uploaded file
    */
-  public async uploadFileDirectly(fileObject: FileObject, metadata: Record<string, any>): Promise<string> {
+  public async uploadFileDirectly(fileObject: FileObject, metadata: Record<string, any>, fileName?: string): Promise<string> {
     try {
       // Create a File object from the buffer
-      const file = new File([fileObject.buffer], fileObject.fileName, {
+      const file = new File([fileObject.buffer], fileName || fileObject.fileName, {
         type: fileObject.mimeType,
         lastModified: Date.now()
       });
@@ -42,10 +42,10 @@ export class UploadService {
    * @param fileObject Object containing file information
    * @returns URL of the uploaded file
    */
-  public async uploadFileWithPresignedUrl(fileObject: FileObject): Promise<string> {
+  public async uploadFileWithPresignedUrl(fileObject: FileObject, fileName?: string): Promise<string> {
     try {
       // 1. Generate presigned URL
-      const fileKey = `${Date.now()}-${fileObject.fileName}`;
+      const fileKey = `${Date.now()}-${fileName || fileObject.fileName}`;
       const presignedUrl = await this.utapi.generateSignedURL(fileKey);
 
       if (!presignedUrl) {
@@ -85,31 +85,88 @@ export class UploadService {
    * @param metadata Additional metadata for the upload
    * @returns URL of the uploaded file and method used
    */
-  public async uploadProfileImage(fileObject: FileObject, userRole: string): Promise<{fileUrl: string, method: string}> {
+  public async uploadProfileImage(fileObject: FileObject, userRole: string, userId?: string, oldImageUrl?: string): Promise<{ fileUrl: string, method: string }> {
     try {
-      // Prepare metadata
+      // Usar un directorio específico para perfiles
+      const fileName = `profiles/${userId || `user-${Date.now()}`}/${Date.now()}-${fileObject.fileName}`;
+
+      // Preparar metadata con información adicional
       const metadata = {
-        userId: `user-${Date.now()}`,
-        userRole: userRole
+        userId: userId || `user-${Date.now()}`,
+        userRole: userRole,
+        fileType: 'profile-image'
       };
 
+      let fileUrl: string;
+      let method: string;
+
       try {
-        // First attempt: direct upload
-        const fileUrl = await this.uploadFileDirectly(fileObject, metadata);
-        console.log(`File uploaded by ${userRole} using direct method: ${fileUrl}`);
-        return { fileUrl, method: 'direct' };
+        // Primera estrategia: subida directa
+        fileUrl = await this.uploadFileDirectly(fileObject, metadata, fileName);
+        method = 'direct';
       } catch (directError) {
-        // Second attempt: presigned URL
+        // Segunda estrategia: URL prefirmada
         console.log('Direct upload failed. Trying with presigned URL...');
-        const fileUrl = await this.uploadFileWithPresignedUrl(fileObject);
-        console.log(`File uploaded by ${userRole} using presigned URL: ${fileUrl}`);
-        return { fileUrl, method: 'presignedUrl' };
+        fileUrl = await this.uploadFileWithPresignedUrl(fileObject, fileName);
+        method = 'presignedUrl';
       }
+      // Eliminar la imagen anterior si existe la URL
+      if (oldImageUrl) {
+        await this.deleteOldProfileImage(oldImageUrl);
+      }
+
+      console.log(`File uploaded by ${userRole} using ${method} method: ${fileUrl}`);
+      return { fileUrl, method };
     } catch (error) {
       console.error('Error in uploadProfileImage:', error);
       throw error;
     }
   }
-}
 
+  private async deleteOldProfileImage(fileUrl: string): Promise<void> {
+    try {
+      // Extraer el fileKey de la URL
+      // Las URLs de UploadThing suelen tener un formato como:
+      // https://uploadthing.com/f/abc123-file.jpg
+      const fileKey = fileUrl.split('/').pop();
+
+      if (!fileKey) {
+        console.warn('Could not extract fileKey from URL:', fileUrl);
+        return;
+      }
+
+      // Llamar a la API de UploadThing para eliminar el archivo
+      await this.utapi.deleteFiles([fileKey]);
+      console.log(`Old profile image deleted: ${fileKey}`);
+    } catch (error) {
+      // No detenemos el flujo si falla la eliminación
+      console.error('Error deleting old profile image:', error);
+    }
+  }
+
+  /**
+   * List files (if needed)
+   * @returns List of files
+   */
+  async listFilesService(): Promise<any[]> {
+  try {
+    // Obtener lista básica de archivos
+    const filesResponse = await this.utapi.listFiles();
+    
+    // Extraer información más detallada
+    return filesResponse.files.map(file => {
+      return {
+        name: file.name,        // Nombre original del archivo
+        key: file.key,          // Clave interna (contiene info de estructura)
+        size: file.size,        // Tamaño
+        uploadedAt: new Date(file.uploadedAt).toISOString(),  // Fecha de subida
+        customId: file.customId // ID personalizado si existe
+      };
+    });
+  } catch (error) {
+    console.error('Error listing detailed files:', error);
+    throw error;
+  }
+}
+}
 export const uploadService = new UploadService();
