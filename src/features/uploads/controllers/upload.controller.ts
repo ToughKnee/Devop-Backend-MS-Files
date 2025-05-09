@@ -4,7 +4,7 @@ import { uploadRouter } from '../../../config/uploadthing';
 import { AuthenticatedRequest } from '../middleware/authenticate.middleware';
 import { uploadService } from '../services/upload.service';
 import multer from 'multer';
-
+import { BadRequestError, ForbiddenError } from '../../../utils/errors/api-error';
 // Multer configuration for file processing
 export const upload = multer({
   storage: multer.memoryStorage(),
@@ -14,6 +14,7 @@ export const upload = multer({
       cb(null, true);
     } else {
       cb(null, false);
+      cb(new Error('Only image files are allowed'));
     }
   }
 });
@@ -27,15 +28,35 @@ export const uploadController = {
   determineRequestType: (req: Request, res: Response, next: NextFunction): void => {
     // Check if it's a multipart request (Flutter) or UploadThing SDK request (web)
     const contentType = req.headers['content-type'] || '';
-    
+
     if (contentType.includes('multipart/form-data')) {
       // For mobile clients, process with multer
       upload.single('file')(req, res, (err) => {
         if (err) {
-          res.status(400).json({ 
-            message: 'Error processing file' 
-          });
-          return; // End here, don't call next()
+          // Handle specific Multer errors
+          if (err instanceof multer.MulterError) {
+            switch (err.code) {
+              case 'LIMIT_FILE_SIZE':
+                return next(new BadRequestError('File exceeds size limit (4MB)', [err.code]));
+              case 'LIMIT_UNEXPECTED_FILE':
+                return next(new BadRequestError('Invalid file field name', [err.code]));
+              default:
+                return next(new BadRequestError(`Error processing file: ${err.message}`, [err.code]));
+            }
+          }
+
+          // For other types of errors (like fileFilter errors)
+          if (err.message === 'Only image files are allowed') {
+            return next(new BadRequestError(err.message, ['INVALID_FILE_TYPE']));
+          }
+
+          // Generic error
+          return next(new BadRequestError('Error processing file', [err.message]));
+        }
+
+        // Verify if there's a file after processing
+        if (!req.file) {
+          return next(new BadRequestError('No image file was provided', ['NO_FILE_UPLOADED']));
         }
         next(); // Only call next() if there's no error
       });
@@ -53,7 +74,7 @@ export const uploadController = {
         handler(req, res, next);
       } else {
         // Permission error - important not to call next() after sending response
-        res.status(403).json({ 
+        res.status(403).json({
           message: 'Access denied. Administrator role required to use the web SDK.'
         });
       }
@@ -63,62 +84,62 @@ export const uploadController = {
   // Handler to process mobile client uploads
   processUpload: async (req: Request, res: Response): Promise<void> => {
     try {
-    if (!req.file) {
-      return; // Ya manejado por UploadThing
-    }
-    
-    const authReq = req as AuthenticatedRequest;
-    
-    // Extraer información adicional
-    const userId = req.body.userId || null;
-    const oldImageUrl = req.body.oldImageUrl || null;
-    
-    // Crear objeto de archivo
-    const fileObject = {
-      buffer: req.file.buffer,
-      mimeType: req.file.mimetype,
-      fileName: req.file.originalname
-    };
-    
-    // Llamar al servicio con la información completa
-    const result = await uploadService.uploadProfileImage(
-      fileObject, 
-      authReq.user.role,
-      userId,
-      oldImageUrl
-    );
- // Devolver respuesta
-    res.status(200).json({
-      message: `Image uploaded successfully${result.method === 'presignedUrl' ? ' (using presigned URL)' : ''}`,
-      fileUrl: result.fileUrl
-    });
-  } catch (error: any) {
-    console.error('Error uploading file:', error);
-    res.status(500).json({
-      message: 'Error uploading image',
-      error: error.message || 'Unknown error'
-    });
-  }
-},
+      if (!req.file) {
+        return; // Already handled by UploadThing
+      }
 
-listFiles: async (req: Request, res: Response): Promise<void> => {
-  try {
-    
-    // Obtener lista básica
-    const files = await uploadService.listFilesService();
-    
-    
-    res.status(200).json({ 
-      message: 'Files retrieved successfully',
-      fileCount: files.length,
-      files
-    });
-  } catch (error: any) {
-    console.error('Error listing files:', error);
-    res.status(500).json({
-      message: 'Error listing files',
-      error: error.message || 'Unknown error'
-    });
+      const authReq = req as AuthenticatedRequest;
+
+      // Extract additional information
+      const userId = req.body.userId || null;
+      const oldImageUrl = req.body.oldImageUrl || null;
+
+      // Create file object
+      const fileObject = {
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        fileName: req.file.originalname
+      };
+
+      // Call service with complete information
+      const result = await uploadService.uploadProfileImage(
+        fileObject,
+        authReq.user.role,
+        userId,
+        oldImageUrl
+      );
+      // Return response
+      res.status(200).json({
+        message: `Image uploaded successfully${result.method === 'presignedUrl' ? ' (using presigned URL)' : ''}`,
+        fileUrl: result.fileUrl
+      });
+    } catch (error: any) {
+      console.error('Error uploading file:', error);
+      res.status(500).json({
+        message: 'Error uploading image',
+        error: error.message || 'Unknown error'
+      });
+    }
+  },
+
+  listFiles: async (req: Request, res: Response): Promise<void> => {
+    try {
+
+      // Get basic list
+      const files = await uploadService.listFilesService();
+
+
+      res.status(200).json({
+        message: 'Files retrieved successfully',
+        fileCount: files.length,
+        files
+      });
+    } catch (error: any) {
+      console.error('Error listing files:', error);
+      res.status(500).json({
+        message: 'Error listing files',
+        error: error.message || 'Unknown error'
+      });
+    }
   }
-}
 };
