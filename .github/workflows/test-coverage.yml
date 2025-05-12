@@ -3,6 +3,12 @@ name: Run tests and upload coverage
 on:
   pull_request:
       branches: [main]
+  workflow_dispatch:
+    inputs:
+      run-tests:
+        description: 'Run tests'
+        default: 'true'
+        required: false
 
 jobs:
   test:
@@ -26,8 +32,3 @@ jobs:
       - name: Run tests
         run: npx jest --coverage
 
-      - name: Upload results to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: Practica-Supervisada-UCR-2025/Backend-MS-Base
