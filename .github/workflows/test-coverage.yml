@@ -42,3 +42,8 @@ jobs:
       - name: Run tests
         run: npx cross-env NODE_ENV=test jest --coverage
 
+      # - name: Upload results to Codecov
+      #   uses: codecov/codecov-action@v5
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     slug: Practica-Supervisada-UCR-2025/Backend-MS-Posts
